@@ -150,23 +150,13 @@ Analyze the problem carefully and provide an optimal solution.
 # 3. Submit to LeetCode
 # ---------------------------
 def submit_solution(slug, code):
-    url = "https://leetcode.com/graphql"
-
+    # Use the direct submission API endpoint
+    url = f"https://leetcode.com/problems/{slug}/submit/"
+    
     payload = {
-        "query": """
-        mutation submitSolution($input: SubmitInput!) {
-          submitSolution(input: $input) {
-            submissionId
-          }
-        }
-        """,
-        "variables": {
-            "input": {
-                "questionSlug": slug,
-                "lang": "java",
-                "code": code
-            }
-        }
+        "lang": "java",
+        "question_id": slug,
+        "typed_code": code
     }
 
     res = requests.post(url, headers=headers, cookies=cookies, json=payload)
@@ -177,13 +167,13 @@ def submit_solution(slug, code):
     
     response_data = res.json()
     
-    if "errors" in response_data:
-        raise Exception(f"LeetCode API Error: {response_data['errors']}")
-    
-    if "data" not in response_data or response_data["data"] is None:
-        raise Exception(f"Invalid response from LeetCode: {response_data}")
-    
-    return response_data["data"]["submitSolution"]["submissionId"]
+    if "submission_id" in response_data:
+        return response_data["submission_id"]
+    elif "interpret_id" in response_data:
+        # Sometimes LeetCode returns interpret_id instead
+        return response_data["interpret_id"]
+    else:
+        raise Exception(f"No submission ID in response: {response_data}")
 
 
 # Poll result
