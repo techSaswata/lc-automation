@@ -204,8 +204,16 @@ def submit_solution(slug, code):
     if page_response.status_code != 200:
         print(f"Warning: Problem page returned {page_response.status_code}")
     
-    # Extract CSRF token from cookies
-    csrf_token = session.cookies.get('csrftoken', LEETCODE_CSRF)
+    # Extract CSRF token from cookies (get the most recent one)
+    csrf_token = None
+    for cookie in session.cookies:
+        if cookie.name == 'csrftoken':
+            csrf_token = cookie.value
+            break
+    
+    if not csrf_token:
+        csrf_token = LEETCODE_CSRF
+    
     if csrf_token:
         session.headers['X-CSRFToken'] = csrf_token
         session.headers['Referer'] = problem_url
