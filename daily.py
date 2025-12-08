@@ -150,8 +150,28 @@ Analyze the problem carefully and provide an optimal solution.
 # 3. Submit to LeetCode
 # ---------------------------
 def submit_solution(slug, code):
+    # Create a session to maintain cookies
+    session = requests.Session()
+    session.cookies.update(cookies)
+    session.headers.update(headers)
+    
+    # First, visit the problem page to get fresh CSRF token
+    problem_url = f"https://leetcode.com/problems/{slug}/"
+    print(f"Visiting problem page: {problem_url}")
+    page_response = session.get(problem_url)
+    
+    # Extract CSRF token from cookies
+    csrf_token = session.cookies.get('csrftoken', LEETCODE_CSRF)
+    if csrf_token:
+        session.headers['X-CSRFToken'] = csrf_token
+        session.headers['Referer'] = problem_url
+        print(f"Got CSRF token: {csrf_token[:20]}...")
+    
+    # Small delay to avoid rate limiting
+    time.sleep(2)
+    
     # Use the direct submission API endpoint
-    url = f"https://leetcode.com/problems/{slug}/submit/"
+    submit_url = f"https://leetcode.com/problems/{slug}/submit/"
     
     payload = {
         "lang": "java",
@@ -159,18 +179,21 @@ def submit_solution(slug, code):
         "typed_code": code
     }
 
-    res = requests.post(url, headers=headers, cookies=cookies, json=payload)
+    res = session.post(submit_url, json=payload)
     
     # Debug: print response
     print(f"Response status: {res.status_code}")
-    print(f"Response text: {res.text[:500]}")  # First 500 chars
+    
+    if res.status_code != 200:
+        print(f"Response text: {res.text[:500]}")
+        raise Exception(f"HTTP {res.status_code}: {res.text[:200]}")
     
     response_data = res.json()
+    print(f"Response: {response_data}")
     
     if "submission_id" in response_data:
         return response_data["submission_id"]
     elif "interpret_id" in response_data:
-        # Sometimes LeetCode returns interpret_id instead
         return response_data["interpret_id"]
     else:
         raise Exception(f"No submission ID in response: {response_data}")
