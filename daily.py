@@ -23,12 +23,18 @@ SMTP_PORT = os.environ.get("SMTP_PORT", "587")
 headers = {
     "User-Agent": "Mozilla/5.0",
     "Content-Type": "application/json",
+    "Referer": "https://leetcode.com",
+    "Origin": "https://leetcode.com",
 }
 
 cookies = {
     "LEETCODE_SESSION": LEETCODE_SESSION,
     "csrftoken": LEETCODE_CSRF
 }
+
+# Add CSRF to headers if available
+if LEETCODE_CSRF:
+    headers["X-CSRFToken"] = LEETCODE_CSRF
 
 
 # ---------------------------
@@ -164,7 +170,20 @@ def submit_solution(slug, code):
     }
 
     res = requests.post(url, headers=headers, cookies=cookies, json=payload)
-    return res.json()["data"]["submitSolution"]["submissionId"]
+    
+    # Debug: print response
+    print(f"Response status: {res.status_code}")
+    print(f"Response text: {res.text[:500]}")  # First 500 chars
+    
+    response_data = res.json()
+    
+    if "errors" in response_data:
+        raise Exception(f"LeetCode API Error: {response_data['errors']}")
+    
+    if "data" not in response_data or response_data["data"] is None:
+        raise Exception(f"Invalid response from LeetCode: {response_data}")
+    
+    return response_data["data"]["submitSolution"]["submissionId"]
 
 
 # Poll result
