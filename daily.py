@@ -21,10 +21,17 @@ SMTP_PORT = os.environ.get("SMTP_PORT", "587")
 
 
 headers = {
-    "User-Agent": "Mozilla/5.0",
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
     "Content-Type": "application/json",
     "Referer": "https://leetcode.com",
     "Origin": "https://leetcode.com",
+    "Connection": "keep-alive",
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
 }
 
 cookies = {
@@ -35,6 +42,7 @@ cookies = {
 # Add CSRF to headers if available
 if LEETCODE_CSRF:
     headers["X-CSRFToken"] = LEETCODE_CSRF
+    headers["x-csrftoken"] = LEETCODE_CSRF
 
 
 # ---------------------------
@@ -168,7 +176,7 @@ def submit_solution(slug, code):
         print(f"Got CSRF token: {csrf_token[:20]}...")
     
     # Small delay to avoid rate limiting
-    time.sleep(2)
+    time.sleep(5)  # Increased from 2 to 5 seconds
     
     # Use the direct submission API endpoint
     submit_url = f"https://leetcode.com/problems/{slug}/submit/"
@@ -276,11 +284,17 @@ def main():
 
     print(f"\n[2/6] Generating code using Gemini 2.0 Pro with Thinking...")
     attempts = 0
-    max_attempts = 5
+    max_attempts = 3  # Reduce to avoid rate limiting
 
     while attempts < max_attempts:
         attempts += 1
         print(f"\n--- Attempt {attempts}/{max_attempts} ---")
+
+        # Add delay between attempts
+        if attempts > 1:
+            wait_time = 15 * attempts
+            print(f"Waiting {wait_time}s to avoid rate limit...")
+            time.sleep(wait_time)
 
         try:
             code = generate_code(problem_text, java_template)
