@@ -49,16 +49,28 @@ if LEETCODE_CSRF:
 # ---------------------------
 # Proxy Configuration
 # ---------------------------
-def get_proxies():
-    """Get proxy configuration if PROXY_API_KEY is set"""
+def make_request_with_proxy(method, url, **kwargs):
+    """Make request through ScraperAPI if key is available"""
     if PROXY_API_KEY:
-        # ScraperAPI format
-        proxy_url = f"http://scraperapi:{PROXY_API_KEY}@proxy-server.scraperapi.com:8001"
-        return {
-            "http": proxy_url,
-            "https": proxy_url
-        }
-    return None
+        # Use ScraperAPI's correct format
+        api_url = 'https://api.scraperapi.com/'
+        params = kwargs.pop('params', {})
+        params['api_key'] = PROXY_API_KEY
+        params['url'] = url
+        
+        if method.upper() == 'GET':
+            return requests.get(api_url, params=params, **kwargs)
+        elif method.upper() == 'POST':
+            # For POST, send data to the target URL via ScraperAPI
+            params['method'] = 'POST'
+            # ScraperAPI handles POST differently
+            return requests.post(api_url, params=params, **kwargs)
+    else:
+        # No proxy, direct request
+        if method.upper() == 'GET':
+            return requests.get(url, **kwargs)
+        elif method.upper() == 'POST':
+            return requests.post(url, **kwargs)
 
 
 # ---------------------------
@@ -88,11 +100,10 @@ def get_daily_challenge():
         """
     }
 
-    proxies = get_proxies()
-    if proxies:
-        print("Using proxy...")
+    if PROXY_API_KEY:
+        print("Using ScraperAPI...")
     
-    res = requests.post(url, json=query, headers=headers, cookies=cookies, proxies=proxies, verify=not bool(proxies))
+    res = make_request_with_proxy('POST', url, json=query, headers=headers, cookies=cookies)
     
     # Better error handling
     if res.status_code != 200:
@@ -190,16 +201,14 @@ def submit_solution(slug, code):
     session.cookies.update(cookies)
     session.headers.update(headers)
     
-    # Add proxy if available
-    proxies = get_proxies()
-    if proxies:
-        session.proxies.update(proxies)
-        print("Using proxy for submission...")
+    if PROXY_API_KEY:
+        print("Using ScraperAPI for submission...")
     
     # First, visit the problem page to get fresh CSRF token
     problem_url = f"https://leetcode.com/problems/{slug}/"
     print(f"Visiting problem page: {problem_url}")
-    page_response = session.get(problem_url, verify=not bool(proxies))
+    
+    page_response = make_request_with_proxy('GET', problem_url)
     
     if page_response.status_code != 200:
         print(f"Warning: Problem page returned {page_response.status_code}")
@@ -220,7 +229,7 @@ def submit_solution(slug, code):
         print(f"Got CSRF token: {csrf_token[:20]}...")
     
     # Small delay to avoid rate limiting
-    time.sleep(5)  # Increased from 2 to 5 seconds
+    time.sleep(5)
     
     # Use the direct submission API endpoint
     submit_url = f"https://leetcode.com/problems/{slug}/submit/"
@@ -231,7 +240,7 @@ def submit_solution(slug, code):
         "typed_code": code
     }
 
-    res = session.post(submit_url, json=payload, verify=not bool(proxies))
+    res = make_request_with_proxy('POST', submit_url, json=payload)
     
     # Debug: print response
     print(f"Response status: {res.status_code}")
