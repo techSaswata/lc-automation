@@ -34,6 +34,7 @@ jobs:
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           GH_PAT: ${{ secrets.GH_PAT }}
+          PROXY_API_KEY: ${{ secrets.PROXY_API_KEY }}
         run: python daily.py
 
       - name: Commit Results if Present

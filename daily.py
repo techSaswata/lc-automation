@@ -18,6 +18,7 @@ EMAIL_PASS = os.environ["EMAIL_PASS"]
 EMAIL_TO = os.environ["EMAIL_TO"]
 SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = os.environ.get("SMTP_PORT", "587")
+PROXY_API_KEY = os.environ.get("PROXY_API_KEY", "")  # ScraperAPI key (optional)
 
 
 headers = {
@@ -43,6 +44,21 @@ cookies = {
 if LEETCODE_CSRF:
     headers["X-CSRFToken"] = LEETCODE_CSRF
     headers["x-csrftoken"] = LEETCODE_CSRF
+
+
+# ---------------------------
+# Proxy Configuration
+# ---------------------------
+def get_proxies():
+    """Get proxy configuration if PROXY_API_KEY is set"""
+    if PROXY_API_KEY:
+        # ScraperAPI format
+        proxy_url = f"http://scraperapi:{PROXY_API_KEY}@proxy-server.scraperapi.com:8001"
+        return {
+            "http": proxy_url,
+            "https": proxy_url
+        }
+    return None
 
 
 # ---------------------------
@@ -72,7 +88,18 @@ def get_daily_challenge():
         """
     }
 
-    res = requests.post(url, json=query, headers=headers, cookies=cookies)
+    proxies = get_proxies()
+    if proxies:
+        print("Using proxy...")
+    
+    res = requests.post(url, json=query, headers=headers, cookies=cookies, proxies=proxies)
+    
+    # Better error handling
+    if res.status_code != 200:
+        print(f"Error fetching problem: {res.status_code}")
+        print(f"Response: {res.text[:500]}")
+        raise Exception(f"Failed to fetch daily problem: HTTP {res.status_code}")
+    
     data = res.json()["data"]["activeDailyCodingChallengeQuestion"]
     q = data["question"]
 
@@ -163,10 +190,19 @@ def submit_solution(slug, code):
     session.cookies.update(cookies)
     session.headers.update(headers)
     
+    # Add proxy if available
+    proxies = get_proxies()
+    if proxies:
+        session.proxies.update(proxies)
+        print("Using proxy for submission...")
+    
     # First, visit the problem page to get fresh CSRF token
     problem_url = f"https://leetcode.com/problems/{slug}/"
     print(f"Visiting problem page: {problem_url}")
     page_response = session.get(problem_url)
+    
+    if page_response.status_code != 200:
+        print(f"Warning: Problem page returned {page_response.status_code}")
     
     # Extract CSRF token from cookies
     csrf_token = session.cookies.get('csrftoken', LEETCODE_CSRF)
