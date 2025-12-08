@@ -92,7 +92,7 @@ def get_daily_challenge():
     if proxies:
         print("Using proxy...")
     
-    res = requests.post(url, json=query, headers=headers, cookies=cookies, proxies=proxies)
+    res = requests.post(url, json=query, headers=headers, cookies=cookies, proxies=proxies, verify=not bool(proxies))
     
     # Better error handling
     if res.status_code != 200:
@@ -199,7 +199,7 @@ def submit_solution(slug, code):
     # First, visit the problem page to get fresh CSRF token
     problem_url = f"https://leetcode.com/problems/{slug}/"
     print(f"Visiting problem page: {problem_url}")
-    page_response = session.get(problem_url)
+    page_response = session.get(problem_url, verify=not bool(proxies))
     
     if page_response.status_code != 200:
         print(f"Warning: Problem page returned {page_response.status_code}")
@@ -223,7 +223,7 @@ def submit_solution(slug, code):
         "typed_code": code
     }
 
-    res = session.post(submit_url, json=payload)
+    res = session.post(submit_url, json=payload, verify=not bool(proxies))
     
     # Debug: print response
     print(f"Response status: {res.status_code}")
