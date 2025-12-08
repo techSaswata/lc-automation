@@ -1,0 +1,48 @@
+name: LeetCode Daily Auto Solver
+
+on:
+  schedule:
+    - cron: "30 1 * * *"     # Runs at 7AM IST
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          pip install requests google-generativeai beautifulsoup4 lxml
+
+      - name: Run Daily Script
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          LEETCODE_SESSION: ${{ secrets.LEETCODE_SESSION }}
+          LEETCODE_CSRF: ${{ secrets.LEETCODE_CSRF }}
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: python daily.py
+
+      - name: Commit Results if Present
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git config user.name "techSaswata"
+            git config user.email "saswata.24bcs10248@sst.scaler.com"
+            git add .
+            git commit -m "Add accepted LeetCode solution"
+            git push
+          fi
+
