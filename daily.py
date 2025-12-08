@@ -109,7 +109,7 @@ Analyze the problem carefully and provide an optimal solution.
 
     # Use the latest Gemini 2.0 Pro model with thinking capabilities
     model = genai.GenerativeModel(
-        "gemini-2.0-flash-thinking-exp-1219",
+        "gemini-2.0-flash-exp",
         generation_config={
             "temperature": 0.7,
             "top_p": 0.95,
