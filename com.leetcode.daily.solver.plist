@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.leetcode.daily.solver</string>
+    
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/python3</string>
+        <string>/Users/techsaswata/Downloads/lc-automation/local_runner.py</string>
+    </array>
+    
+    <key>RunAtLoad</key>
+    <true/>
+    
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>LEETCODE_SESSION</key>
+        <string>YOUR_LEETCODE_SESSION</string>
+        <key>LEETCODE_CSRF</key>
+        <string>YOUR_CSRF_TOKEN</string>
+        <key>GEMINI_API_KEY</key>
+        <string>YOUR_GEMINI_KEY</string>
+        <key>EMAIL_USER</key>
+        <string>YOUR_EMAIL</string>
+        <key>EMAIL_PASS</key>
+        <string>YOUR_EMAIL_PASSWORD</string>
+        <key>EMAIL_TO</key>
+        <string>YOUR_EMAIL</string>
+    </dict>
+    
+    <key>StandardOutPath</key>
+    <string>/Users/techsaswata/Downloads/lc-automation/local_runner.log</string>
+    
+    <key>StandardErrorPath</key>
+    <string>/Users/techsaswata/Downloads/lc-automation/local_runner_error.log</string>
+    
+    <key>StartInterval</key>
+    <integer>3600</integer>
+    
+    <key>ThrottleInterval</key>
+    <integer>600</integer>
+</dict>
+</plist>
+
