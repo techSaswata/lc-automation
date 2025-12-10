@@ -1,5 +1,6 @@
 import requests
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from bs4 import BeautifulSoup
 import time
 import json
@@ -10,6 +11,7 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 
 
+# Environment variables
 LEETCODE_SESSION = os.environ["LEETCODE_SESSION"]
 LEETCODE_CSRF = os.environ.get("LEETCODE_CSRF", "")
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
@@ -18,65 +20,40 @@ EMAIL_PASS = os.environ["EMAIL_PASS"]
 EMAIL_TO = os.environ["EMAIL_TO"]
 SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = os.environ.get("SMTP_PORT", "587")
-PROXY_API_KEY = os.environ.get("PROXY_API_KEY", "")  # ScraperAPI key (optional)
 
 
-headers = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Content-Type": "application/json",
-    "Referer": "https://leetcode.com",
-    "Origin": "https://leetcode.com",
-    "Connection": "keep-alive",
-    "Sec-Fetch-Dest": "empty",
-    "Sec-Fetch-Mode": "cors",
-    "Sec-Fetch-Site": "same-origin",
-}
-
-cookies = {
-    "LEETCODE_SESSION": LEETCODE_SESSION,
-    "csrftoken": LEETCODE_CSRF
-}
-
-# Add CSRF to headers if available
+# Create session with cookies
+session = requests.Session()
+session.cookies.set('LEETCODE_SESSION', LEETCODE_SESSION, domain='leetcode.com')
 if LEETCODE_CSRF:
-    headers["X-CSRFToken"] = LEETCODE_CSRF
-    headers["x-csrftoken"] = LEETCODE_CSRF
+    session.cookies.set('csrftoken', LEETCODE_CSRF, domain='leetcode.com')
 
+# Headers based on working HAR file analysis
+headers = {
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
+    'Accept': '*/*',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Accept-Encoding': 'gzip, deflate',  # No brotli - Python handles gzip automatically
+    'Content-Type': 'application/json',
+    'Origin': 'https://leetcode.com',
+    'Referer': 'https://leetcode.com',
+    'sec-ch-ua': '"Google Chrome";v="143", "Chromium";v="143", "Not A(Brand";v="24"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"macOS"',
+    'sec-fetch-dest': 'empty',
+    'sec-fetch-mode': 'cors',
+    'sec-fetch-site': 'same-origin',
+}
 
-# ---------------------------
-# Proxy Configuration
-# ---------------------------
-def make_request_with_proxy(method, url, **kwargs):
-    """Make request through ScraperAPI if key is available"""
-    if PROXY_API_KEY:
-        # Use ScraperAPI's correct format
-        api_url = 'https://api.scraperapi.com/'
-        params = kwargs.pop('params', {})
-        params['api_key'] = PROXY_API_KEY
-        params['url'] = url
-        
-        if method.upper() == 'GET':
-            return requests.get(api_url, params=params, **kwargs)
-        elif method.upper() == 'POST':
-            # For POST, send data to the target URL via ScraperAPI
-            params['method'] = 'POST'
-            # ScraperAPI handles POST differently
-            return requests.post(api_url, params=params, **kwargs)
-    else:
-        # No proxy, direct request
-        if method.upper() == 'GET':
-            return requests.get(url, **kwargs)
-        elif method.upper() == 'POST':
-            return requests.post(url, **kwargs)
+if LEETCODE_CSRF:
+    headers['x-csrftoken'] = LEETCODE_CSRF
 
 
 # ---------------------------
 # 1. Fetch Daily Problem
 # ---------------------------
 def get_daily_challenge():
+    """Fetch today's LeetCode daily challenge"""
     url = "https://leetcode.com/graphql"
     query = {
         "query": """
@@ -84,6 +61,8 @@ def get_daily_challenge():
           activeDailyCodingChallengeQuestion {
             date
             question {
+              questionId
+              questionFrontendId
               title
               titleSlug
               content
@@ -93,22 +72,16 @@ def get_daily_challenge():
               }
               exampleTestcases
               difficulty
-              stats
             }
           }
         }
         """
     }
 
-    if PROXY_API_KEY:
-        print("Using ScraperAPI...")
+    print("Fetching daily challenge from LeetCode...")
+    res = session.post(url, json=query, headers=headers)
     
-    res = make_request_with_proxy('POST', url, json=query, headers=headers, cookies=cookies)
-    
-    # Better error handling
     if res.status_code != 200:
-        print(f"Error fetching problem: {res.status_code}")
-        print(f"Response: {res.text[:500]}")
         raise Exception(f"Failed to fetch daily problem: HTTP {res.status_code}")
     
     data = res.json()["data"]["activeDailyCodingChallengeQuestion"]
@@ -119,30 +92,62 @@ def get_daily_challenge():
     for snip in q["codeSnippets"]:
         if snip["lang"] == "Java":
             java_template = snip["code"]
+            break
 
-    return q["title"], q["titleSlug"], q["content"], java_template, data["date"]
+    return {
+        'title': q["title"],
+        'slug': q["titleSlug"],
+        'question_id': q["questionId"],
+        'content': q["content"],
+        'java_template': java_template,
+        'date': data["date"]
+    }
 
 
 # Clean HTML → plain text
 def html_to_text(html):
+    """Convert HTML to plain text"""
     soup = BeautifulSoup(html, "lxml")
     return soup.get_text()
 
 
 # ---------------------------
-# 2. Gemini Code Generation (Using latest Gemini 2.0 Pro with Thinking)
+# 2. Gemini Code Generation (Using Gemini 2.0 Flash Exp with Thinking)
 # ---------------------------
-def generate_code(problem_text, java_template):
-    genai.configure(api_key=GEMINI_API_KEY)
+def generate_code(problem_text, java_template, previous_error=None):
+    """Generate Java code using Gemini AI"""
+    # Set API key as environment variable for the client
+    os.environ['GEMINI_API_KEY'] = GEMINI_API_KEY
+    
+    try:
+        client = genai.Client()
+    except Exception as e:
+        print(f"Error initializing Gemini client: {e}")
+        raise
 
     system_prompt = """
-You are a competitive programming expert.
+You are a competitive programming expert who specializes in writing highly optimized solutions.
 You must return ONLY valid Java code with STRICTLY NO COMMENTS.
-Use this format:
-- Use the given Java template
-- Fill solve logic exactly
-- Think deeply about edge cases and optimal solutions
-- Return clean, efficient, working code
+
+CRITICAL REQUIREMENTS:
+- Give me the MOST OPTIMIZED CODE possible
+- Use optimal time complexity algorithms
+- Avoid nested loops where possible
+- Use efficient data structures (HashMap, TreeSet, PriorityQueue, etc.)
+- Think about edge cases carefully
+- Return clean, efficient, bug-free code
+- Use the given Java template exactly
+- NO COMMENTS in the code
+"""
+
+    error_feedback = ""
+    if previous_error:
+        error_feedback = f"""
+
+IMPORTANT - PREVIOUS ATTEMPT FAILED:
+{previous_error}
+
+You MUST fix this error and provide a DIFFERENT, MORE OPTIMIZED approach.
 """
 
     final_prompt = f"""
@@ -153,26 +158,65 @@ Problem Description:
 
 Java Boilerplate:
 {java_template}
+{error_feedback}
 
 Constraints and Instructions:
-Strictly no comments. Only valid Java code.
-Analyze the problem carefully and provide an optimal solution.
+- Strictly no comments. Only valid Java code.
+- Provide the MOST OPTIMIZED solution with best time complexity.
+- Make sure the code compiles and runs efficiently.
+- Avoid Time Limit Exceeded by using optimal algorithms.
 """
 
-    # Use the latest Gemini 2.0 Pro model with thinking capabilities
-    model = genai.GenerativeModel(
-        "gemini-2.0-flash-exp",
-        generation_config={
-            "temperature": 0.7,
-            "top_p": 0.95,
-            "top_k": 40,
-            "max_output_tokens": 8192,
-        }
+    # Use Gemini 3 Pro Preview with proper settings for reasoning models
+    MODEL_NAME = 'gemini-3-pro-preview'
+    
+    config = types.GenerateContentConfig(
+        temperature=0.9,  # CRITICAL: High temperature for reasoning models to avoid repetition
+        max_output_tokens=32768,  # Give room for thinking
     )
     
-    result = model.generate_content(final_prompt)
-
-    code = result.text.strip()
+    try:
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=final_prompt,
+            config=config
+        )
+        
+        # Extract code from response - prioritize response.text
+        code = None
+        
+        # Method 1: Try response.text first (most reliable)
+        if hasattr(response, 'text') and response.text and response.text.strip():
+            code = response.text.strip()
+        
+        # Method 2: If text is empty, try candidates
+        if not code:
+            if hasattr(response, 'candidates') and response.candidates and len(response.candidates) > 0:
+                candidate = response.candidates[0]
+                
+                # Check finish reason first
+                finish_reason = candidate.finish_reason if hasattr(candidate, 'finish_reason') else 'UNKNOWN'
+                
+                if hasattr(candidate, 'content') and candidate.content:
+                    if hasattr(candidate.content, 'parts') and candidate.content.parts:
+                        if len(candidate.content.parts) > 0:
+                            if hasattr(candidate.content.parts[0], 'text') and candidate.content.parts[0].text:
+                                code = candidate.content.parts[0].text.strip()
+                
+                if not code:
+                    print(f"Warning: Empty response from Gemini")
+                    print(f"Finish reason: {finish_reason}")
+                    print(f"Has usage_metadata: {hasattr(response, 'usage_metadata')}")
+                    if hasattr(response, 'usage_metadata'):
+                        print(f"Usage: {response.usage_metadata}")
+                    raise Exception(f"Gemini returned empty response - finish_reason: {finish_reason}")
+        
+        if not code:
+            raise Exception("Failed to extract code from Gemini response")
+            
+    except Exception as e:
+        print(f"Error generating code: {e}")
+        raise
 
     # Clean up markdown code blocks if present
     if code.startswith("```"):
@@ -181,7 +225,7 @@ Analyze the problem carefully and provide an optimal solution.
             code = code[len("java"):].strip()
         code = code.strip()
     
-    # If there are multiple code blocks, take the last one
+    # If there are multiple code blocks, take the one with the solution
     if "```" in code:
         parts = code.split("```")
         for part in reversed(parts):
@@ -193,105 +237,89 @@ Analyze the problem carefully and provide an optimal solution.
 
 
 # ---------------------------
-# 3. Submit to LeetCode
+# 3. Submit to LeetCode (Using Working Approach)
 # ---------------------------
-def submit_solution(slug, code):
-    # Create a session to maintain cookies
-    session = requests.Session()
-    session.cookies.update(cookies)
-    session.headers.update(headers)
+def submit_solution(slug, question_id, code):
+    """Submit solution to LeetCode using the working direct endpoint"""
+    url = f'https://leetcode.com/problems/{slug}/submit/'
     
-    if PROXY_API_KEY:
-        print("Using ScraperAPI for submission...")
+    # Update referer for this specific problem
+    submit_headers = headers.copy()
+    submit_headers['Referer'] = f'https://leetcode.com/problems/{slug}/description/'
     
-    # First, visit the problem page to get fresh CSRF token
-    problem_url = f"https://leetcode.com/problems/{slug}/"
-    print(f"Visiting problem page: {problem_url}")
-    
-    page_response = make_request_with_proxy('GET', problem_url)
-    
-    if page_response.status_code != 200:
-        print(f"Warning: Problem page returned {page_response.status_code}")
-    
-    # Extract CSRF token from cookies (get the most recent one)
-    csrf_token = None
-    for cookie in session.cookies:
-        if cookie.name == 'csrftoken':
-            csrf_token = cookie.value
-            break
-    
-    if not csrf_token:
-        csrf_token = LEETCODE_CSRF
-    
-    if csrf_token:
-        session.headers['X-CSRFToken'] = csrf_token
-        session.headers['Referer'] = problem_url
-        print(f"Got CSRF token: {csrf_token[:20]}...")
-    
-    # Small delay to avoid rate limiting
-    time.sleep(5)
-    
-    # Use the direct submission API endpoint
-    submit_url = f"https://leetcode.com/problems/{slug}/submit/"
-    
+    # Exact payload format from HAR file
     payload = {
         "lang": "java",
-        "question_id": slug,
+        "question_id": question_id,
         "typed_code": code
     }
-
-    res = make_request_with_proxy('POST', submit_url, json=payload)
     
-    # Debug: print response
-    print(f"Response status: {res.status_code}")
+    print(f"Submitting to: {url}")
+    response = session.post(url, json=payload, headers=submit_headers)
     
-    if res.status_code != 200:
-        print(f"Response text: {res.text[:500]}")
-        raise Exception(f"HTTP {res.status_code}: {res.text[:200]}")
+    if response.status_code != 200:
+        raise Exception(f"Submission failed: HTTP {response.status_code} - {response.text[:500]}")
     
-    response_data = res.json()
-    print(f"Response: {response_data}")
+    data = response.json()
+    submission_id = data.get('submission_id')
     
-    if "submission_id" in response_data:
-        return response_data["submission_id"]
-    elif "interpret_id" in response_data:
-        return response_data["interpret_id"]
-    else:
-        raise Exception(f"No submission ID in response: {response_data}")
+    if not submission_id:
+        raise Exception(f"No submission_id in response: {data}")
+    
+    print(f"✓ Submission ID: {submission_id}")
+    return submission_id
 
 
-# Poll result
+# Poll submission result
 def check_status(submission_id):
-    url = f"https://leetcode.com/submissions/detail/{submission_id}/check/"
-    timeout = 60
-    start_time = time.time()
+    """Check submission status until complete"""
+    url = f'https://leetcode.com/submissions/detail/{submission_id}/check/'
     
-    while True:
-        if time.time() - start_time > timeout:
-            return {"state": "TIMEOUT", "status_msg": "Timeout"}
-            
+    print(f"Checking submission status...")
+    max_attempts = 30
+    
+    for attempt in range(1, max_attempts + 1):
         try:
-            res = requests.get(url, headers=headers, cookies=cookies).json()
-            if res["state"] == "SUCCESS":
-                return res
-        except:
-            pass
+            response = session.get(url, headers=headers)
             
-        time.sleep(2)
+            if response.status_code != 200:
+                print(f"  Attempt {attempt}: HTTP {response.status_code}")
+                time.sleep(2)
+                continue
+            
+            data = response.json()
+            state = data.get('state', 'UNKNOWN')
+            
+            if state == 'SUCCESS':
+                return data
+            elif state in ['PENDING', 'STARTED']:
+                print(f"  Attempt {attempt}: {state}...")
+                time.sleep(2)
+            else:
+                print(f"  Attempt {attempt}: Unknown state {state}")
+                time.sleep(2)
+                
+        except Exception as e:
+            print(f"  Attempt {attempt}: Exception - {e}")
+            time.sleep(2)
+    
+    raise Exception(f"Timeout after {max_attempts} attempts")
 
 
 # ---------------------------
 # 4. Save solution on success
 # ---------------------------
-def save_solution(date_str, title, slug, code):
+def save_solution(date_str, title, code):
+    """Save accepted solution to file"""
     # Format: leetcode-Dec08-25.java
-    date_obj = datetime.strptime(date_str, "%Y%m%d")
+    date_obj = datetime.strptime(date_str, "%Y-%m-%d")
     formatted_date = date_obj.strftime("%b%d-%y")
     filename = f"leetcode-{formatted_date}.java"
     
     with open(filename, "w") as f:
         f.write(code)
     
+    print(f"✓ Saved solution as: {filename}")
     return filename
 
 
@@ -299,6 +327,7 @@ def save_solution(date_str, title, slug, code):
 # 5. Email Notification
 # ---------------------------
 def send_email(subject, body):
+    """Send email notification"""
     try:
         msg = MIMEMultipart()
         msg["From"] = EMAIL_USER
@@ -312,90 +341,148 @@ def send_email(subject, body):
         server.login(EMAIL_USER, EMAIL_PASS)
         server.sendmail(EMAIL_USER, EMAIL_TO, msg.as_string())
         server.quit()
-        print("Email sent successfully!")
+        print("✓ Email sent successfully!")
     except Exception as e:
-        print(f"Failed to send email: {e}")
+        print(f"✗ Failed to send email: {e}")
 
 
 # ---------------------------
 # MAIN FLOW WITH RETRY
 # ---------------------------
 def main():
-    print("=" * 60)
-    print("LeetCode Daily Auto Solver - Starting")
-    print("=" * 60)
+    print("=" * 70)
+    print("LEETCODE DAILY AUTO SOLVER")
+    print("=" * 70)
     
-    print("\n[1/6] Fetching daily challenge...")
-    title, slug, html, java_template, date = get_daily_challenge()
+    # Step 1: Fetch daily challenge
+    print("\n[1/5] Fetching daily challenge...")
+    problem = get_daily_challenge()
     
-    print(f"✓ Problem: {title}")
-    print(f"✓ Slug: {slug}")
-    print(f"✓ Date: {date}")
+    print(f"✓ Problem: {problem['title']}")
+    print(f"✓ Slug: {problem['slug']}")
+    print(f"✓ Question ID: {problem['question_id']}")
+    print(f"✓ Date: {problem['date']}")
 
-    problem_text = html_to_text(html).strip()
-    date_clean = date.replace("-", "")
+    problem_text = html_to_text(problem['content']).strip()
 
-    print(f"\n[2/6] Generating code using Gemini 2.0 Pro with Thinking...")
+    # Step 2: Generate and submit with retries
+    max_attempts = 5
     attempts = 0
-    max_attempts = 3  # Reduce to avoid rate limiting
+    previous_error = None  # Track previous error for feedback to Gemini
 
     while attempts < max_attempts:
         attempts += 1
-        print(f"\n--- Attempt {attempts}/{max_attempts} ---")
-
-        # Add delay between attempts
-        if attempts > 1:
-            wait_time = 15 * attempts
-            print(f"Waiting {wait_time}s to avoid rate limit...")
-            time.sleep(wait_time)
+        print(f"\n{'='*70}")
+        print(f"ATTEMPT {attempts}/{max_attempts}")
+        print(f"{'='*70}")
 
         try:
-            code = generate_code(problem_text, java_template)
+            # Generate code (with feedback from previous attempt)
+            print(f"\n[2/5] Generating code using Gemini 3 Pro Preview (reasoning model)...")
+            code = generate_code(problem_text, problem['java_template'], previous_error)
             print(f"✓ Code generated ({len(code)} chars)")
             
-            print(f"[3/6] Submitting to LeetCode...")
-            submission_id = submit_solution(slug, code)
-            print(f"✓ Submission ID: {submission_id}")
+            # Submit
+            print(f"\n[3/5] Submitting to LeetCode...")
+            submission_id = submit_solution(problem['slug'], problem['question_id'], code)
             
-            print(f"[4/6] Checking status...")
+            # Check status
+            print(f"\n[4/5] Checking submission status...")
             result = check_status(submission_id)
 
             status = result.get("status_msg", "Unknown")
-            print(f"Result: {status}")
+            runtime = result.get("status_runtime", "N/A")
+            memory = result.get("status_memory", "N/A")
+            
+            print(f"\n{'='*70}")
+            print(f"RESULT: {status}")
+            print(f"{'='*70}")
+            print(f"Runtime: {runtime}")
+            print(f"Memory: {memory}")
+            if 'total_testcases' in result:
+                print(f"Test Cases: {result.get('total_correct', 0)}/{result.get('total_testcases', 0)}")
+            print(f"{'='*70}")
 
             if status == "Accepted":
-                print(f"\n[5/6] ✓ ACCEPTED! Saving solution...")
-                filename = save_solution(date_clean, title, slug, code)
-                print(f"✓ Saved as: {filename}")
+                # Save solution
+                print(f"\n[5/5] ✓ ACCEPTED! Saving solution...")
+                filename = save_solution(problem['date'], problem['title'], code)
                 
-                print(f"[6/6] Sending email notification...")
+                # Send success email
                 send_email(
-                    f"✓ LeetCode Daily Accepted: {title}",
-                    f"Your solution for {title} ({slug}) was Accepted!\n\nSaved as {filename}.\n\nSubmission ID: {submission_id}"
+                    f"✓ LeetCode Daily Accepted: {problem['title']}",
+                    f"Your solution for {problem['title']} ({problem['slug']}) was Accepted!\n\n"
+                    f"Runtime: {runtime}\n"
+                    f"Memory: {memory}\n"
+                    f"Saved as: {filename}\n"
+                    f"Submission ID: {submission_id}\n\n"
+                    f"Date: {problem['date']}"
                 )
                 
-                print("\n" + "=" * 60)
+                print("\n" + "🎉" * 35)
                 print("SUCCESS! Task completed.")
-                print("=" * 60)
+                print("🎉" * 35)
                 return
             else:
-                print(f"✗ {status} - Retrying...")
+                # Build error feedback for next attempt
+                print(f"\n✗ {status}")
+                error_details = f"Status: {status}"
+                
+                if 'full_runtime_error' in result and result['full_runtime_error']:
+                    runtime_error = result['full_runtime_error'][:500]
+                    print(f"Runtime Error: {runtime_error}")
+                    error_details += f"\nRuntime Error: {runtime_error}"
+                
+                if 'full_compile_error' in result and result['full_compile_error']:
+                    compile_error = result['full_compile_error'][:500]
+                    print(f"Compile Error: {compile_error}")
+                    error_details += f"\nCompile Error: {compile_error}"
+                
+                if status == "Time Limit Exceeded":
+                    test_cases = result.get('total_testcases', '?')
+                    passed = result.get('total_correct', 0)
+                    error_details += f"\nTime Limit Exceeded after {passed}/{test_cases} test cases"
+                    error_details += "\nYou need a MORE EFFICIENT algorithm with better time complexity!"
+                
+                if status == "Wrong Answer":
+                    if 'last_testcase' in result:
+                        error_details += f"\nFailed on test case: {result['last_testcase'][:200]}"
+                    if 'code_output' in result and 'expected_output' in result:
+                        error_details += f"\nYour output: {result.get('code_output', '')[:100]}"
+                        error_details += f"\nExpected: {result.get('expected_output', '')[:100]}"
+                
+                # Store error for next attempt
+                previous_error = error_details
+                
+                print(f"\nWill regenerate code with error feedback...")
+                print(f"Retrying in 10 seconds...")
+                time.sleep(10)
                 
         except Exception as e:
-            print(f"✗ Error: {e}")
+            print(f"\n✗ Submission Error: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            # Store submission error for next attempt
+            previous_error = f"Submission failed with error: {str(e)}"
+            
+            if attempts < max_attempts:
+                print(f"\nWill regenerate code to fix submission error...")
+                print(f"\nRetrying in 10 seconds...")
+                time.sleep(10)
 
-    # After all attempts failed
-    print(f"\n[6/6] Sending failure notification...")
-    send_email(
-        f"✗ LeetCode Daily FAILED: {title}",
-        f"All {max_attempts} attempts failed for {title} ({slug}).\n\nPlease check the GitHub Actions logs for details."
-    )
+    # All attempts failed
+    print(f"\n{'='*70}")
+    print(f"FAILED - All {max_attempts} attempts exhausted")
+    print(f"{'='*70}")
     
-    print("\n" + "=" * 60)
-    print("FAILED - All attempts exhausted")
-    print("=" * 60)
+    send_email(
+        f"✗ LeetCode Daily FAILED: {problem['title']}",
+        f"All {max_attempts} attempts failed for {problem['title']} ({problem['slug']}).\n\n"
+        f"Please check the logs for details.\n\n"
+        f"Date: {problem['date']}"
+    )
 
 
 if __name__ == "__main__":
     main()
-

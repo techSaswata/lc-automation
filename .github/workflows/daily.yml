@@ -21,7 +21,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests google-generativeai beautifulsoup4 lxml
+          pip install requests google-genai beautifulsoup4 lxml
 
       - name: Run Daily Script
         env:
@@ -31,10 +31,8 @@ jobs:
           EMAIL_USER: ${{ secrets.EMAIL_USER }}
           EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
-          SMTP_HOST: ${{ secrets.SMTP_HOST }}
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}
-          GH_PAT: ${{ secrets.GH_PAT }}
-          PROXY_API_KEY: ${{ secrets.PROXY_API_KEY }}
+          SMTP_HOST: smtp.gmail.com
+          SMTP_PORT: 587
         run: python daily.py
 
       - name: Commit Results if Present

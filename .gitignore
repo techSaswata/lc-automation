@@ -4,3 +4,13 @@ __pycache__/
 .env
 *.log
 
+# Local test files
+daily_local_test.py
+submit_now.py
+submit_single.py
+
+# HAR files (may contain sensitive data)
+*.har
+
+# Generated solution files (optional - comment out if you want to commit them)
+# leetcode-*.java
