@@ -309,7 +309,7 @@ def check_status(submission_id):
 # ---------------------------
 # 4. Save solution to JavaYatra repo
 # ---------------------------
-def save_solution(date_str, title, code):
+def save_solution(date_str, title, code, question_id):
     """Save accepted solution to JavaYatra repository organized by month"""
     import subprocess
     
@@ -361,7 +361,7 @@ def save_solution(date_str, title, code):
         subprocess.run(["git", "-C", REPO_DIR, "add", "."], check=True)
         subprocess.run([
             "git", "-C", REPO_DIR, "commit", "-m",
-            f"Add LeetCode solution: {title} ({month} {day})"
+            f"lc {question_id}"
         ], check=True)
         subprocess.run(["git", "-C", REPO_DIR, "push"], check=True)
         print(f"✓ Pushed to JavaYatra repository")
@@ -455,7 +455,7 @@ def main():
             if status == "Accepted":
                 # Save solution
                 print(f"\n[5/5] ✓ ACCEPTED! Saving solution...")
-                filename = save_solution(problem['date'], problem['title'], code)
+                filename = save_solution(problem['date'], problem['title'], code, problem['question_id'])
                 
                 # Send success email
                 send_email(
@@ -525,11 +525,20 @@ def main():
     print(f"FAILED - All {max_attempts} attempts exhausted")
     print(f"{'='*70}")
     
+    # Build failure email with last error details
+    failure_message = (
+        f"All {max_attempts} attempts failed for {problem['title']} ({problem['slug']}).\n\n"
+        f"Date: {problem['date']}\n\n"
+    )
+    
+    if previous_error:
+        failure_message += f"Last Error:\n{previous_error}\n\n"
+    
+    failure_message += "Please check the logs for full details."
+    
     send_email(
         f"✗ LeetCode Daily FAILED: {problem['title']}",
-        f"All {max_attempts} attempts failed for {problem['title']} ({problem['slug']}).\n\n"
-        f"Please check the logs for details.\n\n"
-        f"Date: {problem['date']}"
+        failure_message
     )
 
 
