@@ -135,7 +135,7 @@ def html_to_text(html):
 
 
 # ---------------------------
-# 2. Gemini Code Generation (Using Gemini 2.0 Flash Exp with Thinking)
+# 2. Gemini Code Generation (Using Gemini 3 Pro Preview or Gemini 2.5 Pro as fallback)
 # ---------------------------
 def generate_code(problem_text, java_template, previous_error=None):
     """Generate Java code using Gemini AI"""
