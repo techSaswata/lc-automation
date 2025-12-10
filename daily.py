@@ -208,12 +208,12 @@ Constraints and Instructions:
         # Check if it's specifically the 503 model overload error
         error_str = str(model_error)
         if "503" in error_str and "overloaded" in error_str.lower():
-            print(f"⚠ Gemini 3 Pro is overloaded (503). Falling back to Gemini 2.0 Flash...")
-            # Fallback to Gemini 2.0 Flash
-            MODEL_NAME = "gemini-2.0-flash-exp"
+            print(f"⚠ Gemini 3 Pro is overloaded (503). Falling back to Gemini 2.5 Pro...")
+            # Fallback to Gemini 2.5 Pro
+            MODEL_NAME = "gemini-2.5-pro"
             config = types.GenerateContentConfig(
-                temperature=0.7,
-                max_output_tokens=8192,
+                temperature=0.9,
+                max_output_tokens=32768,
             )
             response = client.models.generate_content(
                 model=MODEL_NAME,

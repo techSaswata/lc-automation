@@ -19,3 +19,4 @@ JavaYatra/
 # Old generated solution files
 leetcode-*.java
 CLAUDE.md
+test_lc_submit_endpoint.py
