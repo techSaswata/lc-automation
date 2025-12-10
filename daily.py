@@ -121,6 +121,7 @@ def get_daily_challenge():
         'title': q["title"],
         'slug': q["titleSlug"],
         'question_id': q["questionId"],
+        'frontend_question_id': q["questionFrontendId"],
         'content': q["content"],
         'java_template': java_template,
         'date': data["date"]
@@ -358,7 +359,7 @@ def check_status(submission_id):
 # ---------------------------
 # 4. Save solution to JavaYatra repo
 # ---------------------------
-def save_solution(date_str, title, code, question_id):
+def save_solution(date_str, title, code, frontend_question_id):
     """Save accepted solution to JavaYatra repository organized by month"""
     import subprocess
     
@@ -410,7 +411,7 @@ def save_solution(date_str, title, code, question_id):
         subprocess.run(["git", "-C", REPO_DIR, "add", "."], check=True)
         subprocess.run([
             "git", "-C", REPO_DIR, "commit", "-m",
-            f"lc {question_id}"
+            f"lc {frontend_question_id}"
         ], check=True)
         subprocess.run(["git", "-C", REPO_DIR, "push"], check=True)
         print(f"✓ Pushed to JavaYatra repository")
@@ -526,7 +527,7 @@ def main():
             if status == "Accepted":
                 # Save solution
                 print(f"\n[5/5] ✓ ACCEPTED! Saving solution...")
-                filename = save_solution(problem['date'], problem['title'], code, problem['question_id'])
+                filename = save_solution(problem['date'], problem['title'], code, problem['frontend_question_id'])
                 
                 # Send success email
                 send_email(
