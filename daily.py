@@ -50,6 +50,14 @@ if LEETCODE_CSRF:
 
 
 # ---------------------------
+# Custom Exceptions
+# ---------------------------
+class AuthenticationError(Exception):
+    """Raised when LeetCode session token or CSRF token is expired"""
+    pass
+
+
+# ---------------------------
 # 1. Fetch Daily Problem
 # ---------------------------
 def get_daily_challenge():
@@ -81,8 +89,23 @@ def get_daily_challenge():
     print("Fetching daily challenge from LeetCode...")
     res = session.post(url, json=query, headers=headers)
     
+    # Check for authentication errors
+    if res.status_code in [401, 403]:
+        raise AuthenticationError("LeetCode session token or CSRF token has expired. Please update credentials.")
+    
     if res.status_code != 200:
         raise Exception(f"Failed to fetch daily problem: HTTP {res.status_code}")
+    
+    # Check if response has errors (GraphQL can return 200 but with errors)
+    try:
+        response_json = res.json()
+        if "errors" in response_json:
+            error_msg = response_json["errors"][0].get("message", "Unknown error")
+            if "not authenticated" in error_msg.lower() or "unauthorized" in error_msg.lower():
+                raise AuthenticationError("LeetCode session token or CSRF token has expired. Please update credentials.")
+            raise Exception(f"GraphQL error: {error_msg}")
+    except (KeyError, IndexError, TypeError):
+        pass
     
     data = res.json()["data"]["activeDailyCodingChallengeQuestion"]
     q = data["question"]
@@ -272,10 +295,21 @@ def submit_solution(slug, question_id, code):
     print(f"Submitting to: {url}")
     response = session.post(url, json=payload, headers=submit_headers)
     
+    # Check for authentication errors
+    if response.status_code in [401, 403]:
+        raise AuthenticationError("LeetCode session token or CSRF token has expired. Please update credentials.")
+    
     if response.status_code != 200:
         raise Exception(f"Submission failed: HTTP {response.status_code} - {response.text[:500]}")
     
     data = response.json()
+    
+    # Check if response indicates authentication error
+    if "error" in data:
+        error_msg = str(data.get("error", ""))
+        if "not authenticated" in error_msg.lower() or "login" in error_msg.lower():
+            raise AuthenticationError("LeetCode session token or CSRF token has expired. Please update credentials.")
+    
     submission_id = data.get('submission_id')
     
     if not submission_id:
@@ -418,16 +452,38 @@ def main():
     print("LEETCODE DAILY AUTO SOLVER")
     print("=" * 70)
     
-    # Step 1: Fetch daily challenge
-    print("\n[1/5] Fetching daily challenge...")
-    problem = get_daily_challenge()
-    
-    print(f"✓ Problem: {problem['title']}")
-    print(f"✓ Slug: {problem['slug']}")
-    print(f"✓ Question ID: {problem['question_id']}")
-    print(f"✓ Date: {problem['date']}")
+    try:
+        # Step 1: Fetch daily challenge
+        print("\n[1/5] Fetching daily challenge...")
+        problem = get_daily_challenge()
+        
+        print(f"✓ Problem: {problem['title']}")
+        print(f"✓ Slug: {problem['slug']}")
+        print(f"✓ Question ID: {problem['question_id']}")
+        print(f"✓ Date: {problem['date']}")
 
-    problem_text = html_to_text(problem['content']).strip()
+        problem_text = html_to_text(problem['content']).strip()
+
+    except AuthenticationError as auth_err:
+        # Handle authentication errors immediately without trying Gemini
+        print(f"\n{'='*70}")
+        print(f"AUTHENTICATION ERROR")
+        print(f"{'='*70}")
+        print(f"✗ {auth_err}")
+        
+        send_email(
+            "✗ LeetCode Daily FAILED: Session Token or CSRF Expired",
+            f"Authentication Error: Session token or CSRF token has expired.\n\n"
+            f"Error Details:\n{auth_err}\n\n"
+            f"Please update your LEETCODE_SESSION and LEETCODE_CSRF secrets in GitHub Actions.\n\n"
+            f"Steps to fix:\n"
+            f"1. Log into LeetCode in your browser\n"
+            f"2. Open Developer Tools > Application > Cookies\n"
+            f"3. Copy the new LEETCODE_SESSION and csrftoken values\n"
+            f"4. Update the secrets in GitHub repository settings\n\n"
+            f"Date: {datetime.now().strftime('%Y-%m-%d')}"
+        )
+        return
 
     # Step 2: Generate and submit with retries
     max_attempts = 5
@@ -521,6 +577,28 @@ def main():
                 print(f"\nWill regenerate code with error feedback...")
                 print(f"Retrying in 10 seconds...")
                 time.sleep(10)
+                
+        except AuthenticationError as auth_err:
+            # Authentication error during submission - stop immediately
+            print(f"\n{'='*70}")
+            print(f"AUTHENTICATION ERROR")
+            print(f"{'='*70}")
+            print(f"✗ {auth_err}")
+            
+            send_email(
+                "✗ LeetCode Daily FAILED: Session Token or CSRF Expired",
+                f"Authentication Error: Session token or CSRF token has expired.\n\n"
+                f"Error Details:\n{auth_err}\n\n"
+                f"Problem: {problem['title']} ({problem['slug']})\n"
+                f"Date: {problem['date']}\n\n"
+                f"Please update your LEETCODE_SESSION and LEETCODE_CSRF secrets in GitHub Actions.\n\n"
+                f"Steps to fix:\n"
+                f"1. Log into LeetCode in your browser\n"
+                f"2. Open Developer Tools > Application > Cookies\n"
+                f"3. Copy the new LEETCODE_SESSION and csrftoken values\n"
+                f"4. Update the secrets in GitHub repository settings"
+            )
+            return
                 
         except Exception as e:
             print(f"\n✗ Submission Error: {e}")
