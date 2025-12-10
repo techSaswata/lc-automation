@@ -33,10 +33,6 @@ jobs:
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
           SMTP_HOST: smtp.gmail.com
           SMTP_PORT: 587
+          GH_PAT: ${{ secrets.GH_PAT }}
         run: python daily.py
-
-      - name: Configure Git for JavaYatra
-        run: |
-          git config --global user.name "techSaswata"
-          git config --global user.email "saswata.24bcs10248@sst.scaler.com"
 

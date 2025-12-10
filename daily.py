@@ -353,6 +353,11 @@ def save_solution(date_str, title, code):
     
     # Commit and push
     try:
+        # Configure git user
+        subprocess.run(["git", "-C", REPO_DIR, "config", "user.name", "techSaswata"], check=True)
+        subprocess.run(["git", "-C", REPO_DIR, "config", "user.email", "saswata.24bcs10248@sst.scaler.com"], check=True)
+        
+        # Add, commit, and push
         subprocess.run(["git", "-C", REPO_DIR, "add", "."], check=True)
         subprocess.run([
             "git", "-C", REPO_DIR, "commit", "-m",
