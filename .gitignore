@@ -8,6 +8,7 @@ __pycache__/
 daily_local_test.py
 submit_now.py
 submit_single.py
+test_lc_submit_endpoint.py
 
 # HAR files (may contain sensitive data)
 *.har
