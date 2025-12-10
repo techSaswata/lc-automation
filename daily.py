@@ -201,43 +201,37 @@ Constraints and Instructions:
             # Re-raise if it's not the 503 overload error
             raise
     
-    try:
-        
-        # Extract code from response - prioritize response.text
-        code = None
-        
-        # Method 1: Try response.text first (most reliable)
-        if hasattr(response, 'text') and response.text and response.text.strip():
-            code = response.text.strip()
-        
-        # Method 2: If text is empty, try candidates
-        if not code:
-            if hasattr(response, 'candidates') and response.candidates and len(response.candidates) > 0:
-                candidate = response.candidates[0]
-                
-                # Check finish reason first
-                finish_reason = candidate.finish_reason if hasattr(candidate, 'finish_reason') else 'UNKNOWN'
-                
-                if hasattr(candidate, 'content') and candidate.content:
-                    if hasattr(candidate.content, 'parts') and candidate.content.parts:
-                        if len(candidate.content.parts) > 0:
-                            if hasattr(candidate.content.parts[0], 'text') and candidate.content.parts[0].text:
-                                code = candidate.content.parts[0].text.strip()
-                
-                if not code:
-                    print(f"Warning: Empty response from Gemini")
-                    print(f"Finish reason: {finish_reason}")
-                    print(f"Has usage_metadata: {hasattr(response, 'usage_metadata')}")
-                    if hasattr(response, 'usage_metadata'):
-                        print(f"Usage: {response.usage_metadata}")
-                    raise Exception(f"Gemini returned empty response - finish_reason: {finish_reason}")
-        
-        if not code:
-            raise Exception("Failed to extract code from Gemini response")
+    # Extract code from response - prioritize response.text
+    code = None
+    
+    # Method 1: Try response.text first (most reliable)
+    if hasattr(response, 'text') and response.text and response.text.strip():
+        code = response.text.strip()
+    
+    # Method 2: If text is empty, try candidates
+    if not code:
+        if hasattr(response, 'candidates') and response.candidates and len(response.candidates) > 0:
+            candidate = response.candidates[0]
             
-    except Exception as e:
-        print(f"Error generating code: {e}")
-        raise
+            # Check finish reason first
+            finish_reason = candidate.finish_reason if hasattr(candidate, 'finish_reason') else 'UNKNOWN'
+            
+            if hasattr(candidate, 'content') and candidate.content:
+                if hasattr(candidate.content, 'parts') and candidate.content.parts:
+                    if len(candidate.content.parts) > 0:
+                        if hasattr(candidate.content.parts[0], 'text') and candidate.content.parts[0].text:
+                            code = candidate.content.parts[0].text.strip()
+            
+            if not code:
+                print(f"Warning: Empty response from Gemini")
+                print(f"Finish reason: {finish_reason}")
+                print(f"Has usage_metadata: {hasattr(response, 'usage_metadata')}")
+                if hasattr(response, 'usage_metadata'):
+                    print(f"Usage: {response.usage_metadata}")
+                raise Exception(f"Gemini returned empty response - finish_reason: {finish_reason}")
+    
+    if not code:
+        raise Exception("Failed to extract code from Gemini response")
 
     # Clean up markdown code blocks if present
     if code.startswith("```"):
