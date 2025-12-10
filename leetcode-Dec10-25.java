@@ -1,17 +1,17 @@
 class Solution {
     public int countPermutations(int[] complexity) {
-        long ans = 1;
+        long res = 1;
         long mod = 1000000007L;
         int n = complexity.length;
-        int rootVal = complexity[0];
+        int base = complexity[0];
         
         for (int i = 1; i < n; i++) {
-            if (complexity[i] <= rootVal) {
+            if (complexity[i] <= base) {
                 return 0;
             }
-            ans = (ans * i) % mod;
+            res = (res * i) % mod;
         }
         
-        return (int) ans;
+        return (int) res;
     }
 }
