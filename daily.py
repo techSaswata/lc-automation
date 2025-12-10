@@ -307,20 +307,64 @@ def check_status(submission_id):
 
 
 # ---------------------------
-# 4. Save solution on success
+# 4. Save solution to JavaYatra repo
 # ---------------------------
 def save_solution(date_str, title, code):
-    """Save accepted solution to file"""
-    # Format: leetcode-Dec08-25.java
-    date_obj = datetime.strptime(date_str, "%Y-%m-%d")
-    formatted_date = date_obj.strftime("%b%d-%y")
-    filename = f"leetcode-{formatted_date}.java"
+    """Save accepted solution to JavaYatra repository organized by month"""
+    import subprocess
     
-    with open(filename, "w") as f:
+    # Parse date to get month and day
+    date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+    month = date_obj.strftime("%b")  # e.g., "Dec"
+    day = date_obj.strftime("%d")     # e.g., "01", "10"
+    
+    # GitHub repo details
+    REPO_URL = "https://github.com/techSaswata/JavaYatra.git"
+    REPO_DIR = "JavaYatra"
+    BASE_PATH = "leetcode_daily"
+    
+    # Get GitHub token
+    GH_PAT = os.environ.get("GH_PAT", "")
+    
+    # Clone or update repo
+    if not os.path.exists(REPO_DIR):
+        print(f"Cloning JavaYatra repository...")
+        if GH_PAT:
+            auth_url = REPO_URL.replace("https://", f"https://{GH_PAT}@")
+            subprocess.run(["git", "clone", auth_url, REPO_DIR], check=True)
+        else:
+            subprocess.run(["git", "clone", REPO_URL, REPO_DIR], check=True)
+    else:
+        print(f"Updating JavaYatra repository...")
+        subprocess.run(["git", "-C", REPO_DIR, "pull"], check=True)
+    
+    # Create month folder if it doesn't exist
+    month_folder = os.path.join(REPO_DIR, BASE_PATH, month)
+    os.makedirs(month_folder, exist_ok=True)
+    
+    # Save file as MonthDay.java (e.g., Dec01.java, Dec10.java)
+    filename = f"{month}{day}.java"
+    filepath = os.path.join(month_folder, filename)
+    
+    with open(filepath, "w") as f:
         f.write(code)
     
-    print(f"✓ Saved solution as: {filename}")
-    return filename
+    print(f"✓ Saved solution as: {BASE_PATH}/{month}/{filename}")
+    
+    # Commit and push
+    try:
+        subprocess.run(["git", "-C", REPO_DIR, "add", "."], check=True)
+        subprocess.run([
+            "git", "-C", REPO_DIR, "commit", "-m",
+            f"Add LeetCode solution: {title} ({month} {day})"
+        ], check=True)
+        subprocess.run(["git", "-C", REPO_DIR, "push"], check=True)
+        print(f"✓ Pushed to JavaYatra repository")
+    except subprocess.CalledProcessError as e:
+        print(f"⚠ Git operation failed: {e}")
+        # Don't raise - email notification will still work
+    
+    return f"{BASE_PATH}/{month}/{filename}"
 
 
 # ---------------------------

@@ -35,13 +35,8 @@ jobs:
           SMTP_PORT: 587
         run: python daily.py
 
-      - name: Commit Results if Present
+      - name: Configure Git for JavaYatra
         run: |
-          if [ -n "$(git status --porcelain)" ]; then
-            git config user.name "techSaswata"
-            git config user.email "saswata.24bcs10248@sst.scaler.com"
-            git add .
-            git commit -m "Add accepted LeetCode solution"
-            git push
-          fi
+          git config --global user.name "techSaswata"
+          git config --global user.email "saswata.24bcs10248@sst.scaler.com"
 

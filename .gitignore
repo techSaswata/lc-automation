@@ -12,5 +12,8 @@ submit_single.py
 # HAR files (may contain sensitive data)
 *.har
 
-# Generated solution files (optional - comment out if you want to commit them)
-# leetcode-*.java
+# JavaYatra repo clone (solutions saved there)
+JavaYatra/
+
+# Old generated solution files
+leetcode-*.java
